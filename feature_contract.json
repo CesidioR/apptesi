@@ -1,0 +1,67 @@
+{
+  "model": "dnamm.onnx",
+  "note_model_file": "Self-contained (pesi inclusi, nessun .data esterno). Rinominabile/spostabile liberamente. I file dnammlite.onnx + dnav8lite.onnx.data sono la versione a dati esterni: eliminabili.",
+  "framework": "pytorch -> onnx",
+  "changes_vs_v8lite": "Rimossa la turbulence: features 5->4, risk_state 7->6. Normalizzazione feature ancora BAKED-IN nel grafo (app fornisce valori GREZZI).",
+
+  "inputs": {
+    "features": {
+      "shape": ["batch", "n_assets", 30, 4],
+      "dtype": "float32",
+      "raw": true,
+      "window_days": 30,
+      "columns": [
+        { "index": 0, "name": "high",  "level": "per_asset", "raw": "prezzo high grezzo" },
+        { "index": 1, "name": "low",   "level": "per_asset", "raw": "prezzo low grezzo" },
+        { "index": 2, "name": "close", "level": "per_asset", "raw": "prezzo close grezzo (adjusted consigliato)" },
+        { "index": 3, "name": "vix",   "level": "market",    "raw": "valore VIX grezzo, broadcast su ogni asset" }
+      ],
+      "internal_normalization": {
+        "high_low_close": "x / close[last_day]  (guard: |close_last| <= 1e-12 -> 0)",
+        "vix": "clip( x / 100, 0, 1 )"
+      }
+    },
+
+    "prev_weights": {
+      "shape": ["batch", "n_assets"],
+      "dtype": "float32",
+      "description": "Pesi correnti del portafoglio (ultimo step)."
+    },
+
+    "risk_state": {
+      "shape": ["batch", 6],
+      "dtype": "float32",
+      "raw": false,
+      "responsibility": "APP — consumato grezzo dal grafo, va gia' trasformato. Dipende dallo STATO del portafoglio (equity curve): l'app lo mantiene passo-passo.",
+      "order_confirmed": "CONFERMATO sul codice del nuovo environment (risk_state a 6 scalari).",
+      "scalars_ordered": [
+        { "index": 0, "name": "drawdown",        "source": "portfolio", "transform": "(peak - value)/peak; =0 se peak<=0; bound [0,1]" },
+        { "index": 1, "name": "portfolio_vol",   "source": "portfolio", "transform": "_log_scale( std(21 rend, ddof=1) * sqrt(252) ); =0 se <2 rend" },
+        { "index": 2, "name": "time_underwater", "source": "portfolio", "transform": "_log_scale( days_since_peak / 252 )" },
+        { "index": 3, "name": "market_vol_comp", "source": "market",    "transform": "_log_scale( market_vol )" },
+        { "index": 4, "name": "vix",             "source": "market",    "transform": "vix / 100  (NO clip)" },
+        { "index": 5, "name": "market_vol_raw",  "source": "market",    "transform": "clip( market_vol, 0, 3.0 )  // denominatore overlay Moreira-Muir" }
+      ],
+      "constants": {
+        "_log_scale": "clip( log1p(max(x,0)), 0, 5.0 )",
+        "RISK_VOL_WINDOW": 21,
+        "portfolio_vol_formula": "std(ultimi 21 rendimenti semplici portafoglio, ddof=1) * sqrt(252), poi _log_scale",
+        "market_vol_formula": "vol annualizzata paniere equipesato, finestra 21, rendimenti semplici (media cross-asset), ddof=1"
+      }
+    }
+  },
+
+  "outputs": {
+    "portfolio_weights": {
+      "shape": ["batch", "n_assets"],
+      "dtype": "float32",
+      "properties": "somma = 1.0 (verificato)"
+    }
+  },
+
+  "architecture": {
+    "encoder": "GRU x2, hidden_size=10, linear_before_reset=1, stateless",
+    "constants": { "target_var": 0.0625, "l_max": 1.0 },
+    "overlay_MM": "e_t = min(0.999, target_var / market_vol^2)"
+  }
+}
