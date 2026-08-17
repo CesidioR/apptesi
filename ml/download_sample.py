@@ -1,17 +1,23 @@
 """
-Scarica un dataset CAMPIONE (OHLC per asset + VIX) da Yahoo Finance e lo salva
-in JSON, pronto per il seed di SQLite nell'app.
+Scarica OHLC per asset + VIX da Yahoo Finance e salva in JSON, pronto per
+il seed/sync di SQLite nell'app.
 
-Versione ROBUSTA: usa Ticker.history() per-ticker (single-index, niente
-MultiIndex fragile di yf.download). Funziona sia in locale sia su Colab.
+Versione ROBUSTA: Ticker.history() per-ticker (single-index, niente MultiIndex
+fragile di yf.download). Funziona in locale, su Colab e in GitHub Actions.
 
-Output: seed_data.json  con struttura:
+Output: data/prices.json
     { "prices": [{ "ticker","date","high","low","close" }, ...],
       "market": [{ "date","vix" }, ...] }
 """
 
-PERIOD = "3y"                 # storia per finestre 30/126g (usa "5y" se vuoi piu' dati)
-OUT_PATH = "data/prices.json"   # in Colab resta nella working dir
+import json
+import os
+import yfinance as yf
+
+TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
+           "META", "TSLA", "JPM", "V", "JNJ"]
+PERIOD = "3y"                 # storia per finestre 30/126g
+OUT_PATH = "data/prices.json"
 
 
 def main():
@@ -34,6 +40,7 @@ def main():
     market = [{"date": d.strftime("%Y-%m-%d"), "vix": round(float(r["Close"]), 4)}
               for d, r in vh.iterrows()]
 
+    os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)  # crea data/ se manca
     with open(OUT_PATH, "w") as f:
         json.dump({"prices": prices, "market": market}, f)
 
