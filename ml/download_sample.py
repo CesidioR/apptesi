@@ -14,8 +14,12 @@ import json
 import os
 import yfinance as yf
 
-TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
-           "META", "TSLA", "JPM", "V", "JNJ"]
+TICKERS = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "INTC", "CSCO",
+  "ORCL", "CRM", "ADBE", "QCOM", "TXN", "AVGO", "NFLX", "UBER", "SHOP", "SONY",
+  "JPM", "BAC", "WFC", "GS", "MS", "V", "MA", "AXP", "BLK", "C",
+  "JNJ", "PFE", "UNH", "ABBV", "MRK", "LLY", "TMO", "NVO",
+  "PG", "KO", "PEP", "COST", "WMT", "MCD", "NKE", "SBUX",
+  "CAT", "BA", "XOM", "CVX"]
 PERIOD = "3y"                 # storia per finestre 30/126g
 OUT_PATH = "data/prices.json"
 

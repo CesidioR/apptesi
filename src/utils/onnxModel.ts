@@ -19,7 +19,8 @@ export async function loadModel(): Promise<InferenceSession> {
   loadingPromise = (async () => {
     const asset = Asset.fromModule(require("../../assets/dnamm.onnx"));
     await asset.downloadAsync(); // rende disponibile il file in locale
-    if (!asset.localUri) throw new Error("Asset ONNX non trovato (localUri null)");
+    if (!asset.localUri)
+      throw new Error("Asset ONNX non trovato (localUri null)");
     session = await InferenceSession.create(asset.localUri);
     return session;
   })();
@@ -36,6 +37,7 @@ function toTensor(t: TensorData): Tensor {
 }
 
 // Esegue l'agente: dai 3 input costruiti -> pesi del portafoglio (number[]).
+// Usato in agentStrategy,
 export async function runAgent(inputs: ModelInputs): Promise<number[]> {
   const s = session ?? (await loadModel());
 

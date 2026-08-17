@@ -1,5 +1,6 @@
 import { db } from "@/db/client";
-import { market, prices } from "@/db/schema";
+import { holdings, market, prices } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import {
   alignCandles,
   alignCloses,
@@ -36,6 +37,40 @@ export async function loadMarket(): Promise<MarketRow[]> {
     .from(market)
     .orderBy(market.date);
 }
+
+export async function loadSelectedPrices(
+  tickers: string[],
+): Promise<PriceRow[]> {
+  if (tickers.length === 0) return [];
+  return db
+    .select({
+      ticker: prices.ticker,
+      date: prices.date,
+      high: prices.high,
+      low: prices.low,
+      close: prices.close,
+    })
+    .from(prices)
+    .where(inArray(prices.ticker, tickers))
+    .orderBy(prices.date);
+}
+
+export async function loadPortfolioTickers(
+  portfolioId: number | null,
+): Promise<string[]> {
+  if (portfolioId == null) return [];
+
+  const rows = await db
+    .select({
+      ticker: holdings.ticker,
+    })
+    .from(holdings)
+    .where(eq(holdings.portfolio_id, portfolioId));
+
+  // Estrae l'array piatto di ticker: ["AAPL", "MSFT", ...]
+  return rows.map((r) => r.ticker);
+}
+
 export type MethodsResult = {
   tickers: string[];
   sigmaMkt: number;

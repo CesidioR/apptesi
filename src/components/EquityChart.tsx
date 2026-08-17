@@ -1,24 +1,58 @@
 import { agentStrategy } from "@/src/utils/agentStrategy";
 import {
   backtest,
+  strategies,
   type BacktestMetrics,
   type Strategy,
-  strategies,
 } from "@/src/utils/backtest";
-import { loadMarket, loadPrices } from "@/src/utils/portfolioMethods";
+import {
+  loadMarket,
+  loadPortfolioTickers,
+  loadSelectedPrices,
+} from "@/src/utils/portfolioMethods";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { CartesianChart, Line } from "victory-native";
+import { usePortfolio } from "../context/PortfolioContext";
 
 // tutte le serie: 4 metodi classici + agente ONNX
-const SERIES: { key: string; label: string; color: string; strategy: Strategy }[] =
-  [
-    { key: "equalWeight", label: "Equal Weight", color: "#94a3b8", strategy: strategies.equalWeight },
-    { key: "inverseVol", label: "Inverse Vol", color: "#22c55e", strategy: strategies.inverseVol },
-    { key: "targetVol", label: "Target Vol", color: "#38bdf8", strategy: strategies.targetVol },
-    { key: "kelly", label: "Kelly", color: "#f59e0b", strategy: strategies.kelly },
-    { key: "agent", label: "Agente DRL", color: "#a855f7", strategy: agentStrategy },
-  ];
+const SERIES: {
+  key: string;
+  label: string;
+  color: string;
+  strategy: Strategy;
+}[] = [
+  {
+    key: "equalWeight",
+    label: "Equal Weight",
+    color: "#94a3b8",
+    strategy: strategies.equalWeight,
+  },
+  {
+    key: "inverseVol",
+    label: "Inverse Vol",
+    color: "#22c55e",
+    strategy: strategies.inverseVol,
+  },
+  {
+    key: "targetVol",
+    label: "Target Vol",
+    color: "#38bdf8",
+    strategy: strategies.targetVol,
+  },
+  {
+    key: "kelly",
+    label: "Kelly",
+    color: "#f59e0b",
+    strategy: strategies.kelly,
+  },
+  {
+    key: "agent",
+    label: "Agente DRL",
+    color: "#a855f7",
+    strategy: agentStrategy,
+  },
+];
 
 type Row = { i: number } & Record<string, number>;
 
@@ -26,11 +60,21 @@ export default function EquityChart() {
   const [data, setData] = useState<Row[] | null>(null);
   const [metrics, setMetrics] = useState<Record<string, BacktestMetrics>>({});
   const [available, setAvailable] = useState<string[]>([]);
-  const [period, setPeriod] = useState<{ start: string; end: string } | null>(null);
+  const [period, setPeriod] = useState<{ start: string; end: string } | null>(
+    null,
+  );
+
+  const { selectedPortfolioId, setTickers, tickers } = usePortfolio();
 
   useEffect(() => {
     (async () => {
-      const rows = await loadPrices();
+      const tks = await loadPortfolioTickers(selectedPortfolioId);
+      setTickers(tks);
+      const rows = await loadSelectedPrices(tks);
+      if (rows.length === 0) {
+        setData([]);
+        return;
+      }
       const market = await loadMarket();
 
       const curves: Record<string, number[]> = {};
@@ -65,7 +109,7 @@ export default function EquityChart() {
       setPeriod(per);
       setData(points);
     })();
-  }, []);
+  }, [selectedPortfolioId, setTickers]);
 
   if (!data) {
     return (
@@ -107,22 +151,42 @@ export default function EquityChart() {
       {/* Tabella comparativa */}
       <View className="mt-4 px-4">
         <View className="flex-row border-b border-slate-600 pb-1">
-          <Text className="flex-1 text-slate-400 font-bold text-xs">Strategia</Text>
-          <Text className="w-16 text-right text-slate-400 font-bold text-xs">Rend</Text>
-          <Text className="w-14 text-right text-slate-400 font-bold text-xs">Sharpe</Text>
-          <Text className="w-16 text-right text-slate-400 font-bold text-xs">MaxDD</Text>
+          <Text className="flex-1 text-slate-400 font-bold text-xs">
+            Strategia
+          </Text>
+          <Text className="w-16 text-right text-slate-400 font-bold text-xs">
+            Rend
+          </Text>
+          <Text className="w-14 text-right text-slate-400 font-bold text-xs">
+            Sharpe
+          </Text>
+          <Text className="w-16 text-right text-slate-400 font-bold text-xs">
+            MaxDD
+          </Text>
         </View>
         {shown.map((s) => {
           const m = metrics[s.key];
           return (
-            <View key={s.key} className="flex-row py-1.5 border-b border-slate-800 items-center">
+            <View
+              key={s.key}
+              className="flex-row py-1.5 border-b border-slate-800 items-center"
+            >
               <View className="flex-1 flex-row items-center">
-                <View className="w-2.5 h-2.5 rounded-full mr-1.5" style={{ backgroundColor: s.color }} />
+                <View
+                  className="w-2.5 h-2.5 rounded-full mr-1.5"
+                  style={{ backgroundColor: s.color }}
+                />
                 <Text className="text-white text-xs">{s.label}</Text>
               </View>
-              <Text className="w-16 text-right text-slate-200 text-xs">{m ? pct(m.totalReturn) : "-"}</Text>
-              <Text className="w-14 text-right text-slate-200 text-xs">{m ? m.sharpe.toFixed(2) : "-"}</Text>
-              <Text className="w-16 text-right text-slate-200 text-xs">{m ? "-" + (m.maxDrawdown * 100).toFixed(1) + "%" : "-"}</Text>
+              <Text className="w-16 text-right text-slate-200 text-xs">
+                {m ? pct(m.totalReturn) : "-"}
+              </Text>
+              <Text className="w-14 text-right text-slate-200 text-xs">
+                {m ? m.sharpe.toFixed(2) : "-"}
+              </Text>
+              <Text className="w-16 text-right text-slate-200 text-xs">
+                {m ? "-" + (m.maxDrawdown * 100).toFixed(1) + "%" : "-"}
+              </Text>
             </View>
           );
         })}

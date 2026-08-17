@@ -2,11 +2,13 @@ import { db } from "@/db/client";
 import { prices } from "@/db/schema";
 import { runSeed } from "@/db/seed";
 import { loadModel } from "@/src/utils/onnxModel";
+import { syncPrices } from "@/src/utils/sync";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import migrations from "../../drizzle/migrations";
+import { PortfolioProvider } from "../context/PortfolioContext";
 import "../styles/global.css";
 
 export default function RootLayout() {
@@ -27,7 +29,12 @@ export default function RootLayout() {
     (async () => {
       const existing = await db.select().from(prices).limit(1); // basta la prima riga
       if (existing.length === 0) {
-        await runSeed(); // esegue solo se la tabella è vuota
+        await runSeed(); // seed iniziale (bundled) solo se la tabella è vuota
+      }
+      try {
+        await syncPrices(); // dati freschi da GitHub (offline -> salta, usa quelli locali)
+      } catch (e) {
+        console.warn("Sync saltata (offline?):", e);
       }
       setSeeded(true);
     })();
@@ -48,19 +55,23 @@ export default function RootLayout() {
     return (
       <View className="flex-1 justify-center items-center bg-slate-950">
         <ActivityIndicator size="large" color="#22c55e" />
-        <Text className="text-slate-400 mt-2">Inizializzazione database...</Text>
+        <Text className="text-slate-400 mt-2">
+          Inizializzazione database...
+        </Text>
       </View>
     );
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: "#0022ff" },
-      }}
-    >
-      <Stack.Screen name="(tabs)" />
-    </Stack>
+    <PortfolioProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "#0022ff" },
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </PortfolioProvider>
   );
 }
