@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { holdings, market, prices } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, gte, inArray } from "drizzle-orm";
 import {
   alignCandles,
   alignCloses,
@@ -53,6 +53,42 @@ export async function loadSelectedPrices(
     .from(prices)
     .where(inArray(prices.ticker, tickers))
     .orderBy(prices.date);
+}
+
+export type AssetCardData = {
+  ticker: string;
+  close: number[];
+};
+
+// Funzione per caricare i dati che mi serviranno per mostrare le card dei vari asset
+// Usata i Asset card
+export async function loadTicker(days = 90): Promise<AssetCardData[]> {
+  const recent = await db
+    .selectDistinct({ date: prices.date })
+    .from(prices)
+    .orderBy(desc(prices.date))
+    .limit(days);
+
+  if (recent.length === 0) return [];
+  const cutoff = recent[recent.length - 1].date;
+
+  const rows = await db
+    .select({
+      ticker: prices.ticker,
+      close: prices.close,
+      date: prices.date,
+    })
+    .from(prices)
+    .where(gte(prices.date, cutoff))
+    .orderBy(desc(prices.date));
+
+  // Raggruppa per ticker, array diu close in ordine di data
+  const byTicker = new Map<string, number[]>();
+  for (const r of rows) {
+    if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, []);
+    byTicker.get(r.ticker)!.push(r.close);
+  }
+  return [...byTicker].map(([ticker, close]) => ({ ticker, close }));
 }
 
 export async function loadPortfolioTickers(

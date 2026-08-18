@@ -1,4 +1,4 @@
-import { db } from "@/db/client";
+import { db, expoDb } from "@/db/client";
 import { prices } from "@/db/schema";
 import { runSeed } from "@/db/seed";
 import { loadModel } from "@/src/utils/onnxModel";
@@ -31,6 +31,8 @@ export default function RootLayout() {
       if (existing.length === 0) {
         await runSeed(); // seed iniziale (bundled) solo se la tabella è vuota
       }
+      // TEMPORANEO: forza la ri-sincronizzazione oggi (togli dopo)
+      await expoDb.runAsync("DELETE FROM meta WHERE key = 'lastSync'");
       try {
         await syncPrices(); // dati freschi da GitHub (offline -> salta, usa quelli locali)
       } catch (e) {
