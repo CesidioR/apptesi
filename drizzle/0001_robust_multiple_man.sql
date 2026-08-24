@@ -1,0 +1,1 @@
+ALTER TABLE `holdings` ADD `entry_price` real DEFAULT 0 NOT NULL;

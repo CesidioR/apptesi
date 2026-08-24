@@ -1,0 +1,1 @@
+ALTER TABLE `portfolios` ADD `base_fees` real DEFAULT 0 NOT NULL;

@@ -1,3 +1,4 @@
+import { COLORS } from "@/src/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
@@ -16,7 +17,7 @@ export default function TabLayout() {
           <BlurView
             intensity={80}
             tint="dark"
-            className="w-full flex-row justify-around items-center py-3 px-2 rounded-full border border-white/10 overflow-hidden shadow-2xl bg-slate-900/80"
+            className="w-full flex-row justify-around items-center py-3 px-2 rounded-full border border-divider overflow-hidden shadow-2xl bg-surface/90"
           >
             {state.routes.map((route, index) => {
               const { options } = descriptors[route.key];
@@ -39,14 +40,8 @@ export default function TabLayout() {
                 switch (routeName) {
                   case "index":
                     return focused ? "home" : "home-outline";
-                  case "analytics":
+                  case "assets":
                     return focused ? "stats-chart" : "stats-chart-outline";
-                  case "methods":
-                    return "swap-horizontal"; // Icona centrale di scambio estilo Revolut
-                  case "cards":
-                    return focused ? "card" : "card-outline";
-                  case "profile":
-                    return focused ? "person" : "person-outline";
                   default:
                     return "ellipse";
                 }
@@ -58,12 +53,12 @@ export default function TabLayout() {
                   <Pressable
                     key={route.key}
                     onPress={onPress}
-                    className="w-12 h-12 bg-blue-600 rounded-full justify-center items-center shadow-lg active:opacity-80 -mt-2"
+                    className="w-12 h-12 bg-accent rounded-full justify-center items-center shadow-lg active:opacity-80 -mt-2"
                   >
                     <Ionicons
                       name="swap-horizontal"
                       size={24}
-                      color="#ffffff"
+                      color={COLORS.background}
                     />
                   </Pressable>
                 );
@@ -78,12 +73,12 @@ export default function TabLayout() {
                   <Ionicons
                     name={getIconName(route.name, isFocused) as any}
                     size={22}
-                    color={isFocused ? "#38bdf8" : "#94a3b8"}
+                    color={isFocused ? COLORS.accent : COLORS.muted}
                   />
                   {options.title && (
                     <Text
                       className={`text-[10px] mt-1 font-medium ${
-                        isFocused ? "text-sky-400" : "text-slate-400"
+                        isFocused ? "text-accent" : "text-muted"
                       }`}
                     >
                       {options.title}
@@ -98,7 +93,6 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="assets" options={{ title: "Assets" }} />
-      <Tabs.Screen name="methods" options={{ title: "Methods" }} />
     </Tabs>
   );
 }

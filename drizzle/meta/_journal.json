@@ -8,6 +8,27 @@
       "when": 1786121042509,
       "tag": "0000_useful_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787389872330,
+      "tag": "0001_robust_multiple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787391301448,
+      "tag": "0002_sad_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787585450003,
+      "tag": "0003_talented_junta",
+      "breakpoints": true
     }
   ]
 }

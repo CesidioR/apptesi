@@ -1,8 +1,8 @@
-import { db, expoDb } from "@/db/client";
+import { db } from "@/db/client";
 import { prices } from "@/db/schema";
 import { runSeed } from "@/db/seed";
+import { COLORS } from "@/src/theme";
 import { loadModel } from "@/src/utils/onnxModel";
-import { syncPrices } from "@/src/utils/sync";
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
@@ -32,20 +32,20 @@ export default function RootLayout() {
         await runSeed(); // seed iniziale (bundled) solo se la tabella è vuota
       }
       // TEMPORANEO: forza la ri-sincronizzazione oggi (togli dopo)
-      await expoDb.runAsync("DELETE FROM meta WHERE key = 'lastSync'");
+      /* await expoDb.runAsync("DELETE FROM meta WHERE key = 'lastSync'");
       try {
         await syncPrices(); // dati freschi da GitHub (offline -> salta, usa quelli locali)
       } catch (e) {
         console.warn("Sync saltata (offline?):", e);
-      }
+      } */
       setSeeded(true);
     })();
   }, [success]);
 
   if (error) {
     return (
-      <View className="flex-1 justify-center items-center bg-slate-950">
-        <Text className="text-red-500 font-bold">
+      <View className="flex-1 justify-center items-center bg-background">
+        <Text className="text-down font-bold">
           Errore Database: {error.message}
         </Text>
       </View>
@@ -55,9 +55,9 @@ export default function RootLayout() {
   // Mentre crea le tabelle (migrazioni) o popola i dati (seed)
   if (!success || !seeded) {
     return (
-      <View className="flex-1 justify-center items-center bg-slate-950">
-        <ActivityIndicator size="large" color="#22c55e" />
-        <Text className="text-slate-400 mt-2">
+      <View className="flex-1 justify-center items-center bg-background">
+        <ActivityIndicator size="large" color={COLORS.up} />
+        <Text className="text-muted mt-2">
           Inizializzazione database...
         </Text>
       </View>
@@ -69,7 +69,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "#0022ff" },
+          contentStyle: { backgroundColor: COLORS.background },
         }}
       >
         <Stack.Screen name="(tabs)" />
