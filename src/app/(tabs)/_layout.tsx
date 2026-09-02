@@ -1,6 +1,5 @@
 import { COLORS } from "@/src/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
@@ -14,11 +13,7 @@ export default function TabLayout() {
       tabBar={({ state, descriptors, navigation }) => (
         // Contenitore esterno per posizionare la barra staccata dal fondo (Flottante stile Revolut)
         <View className="absolute bottom-6 left-5 right-5 items-center">
-          <BlurView
-            intensity={80}
-            tint="dark"
-            className="w-full flex-row justify-around items-center py-3 px-2 rounded-full border border-divider overflow-hidden shadow-2xl bg-surface/90"
-          >
+          <View className="w-[50%] flex-row justify-around items-center p-2   overflow-hidden ">
             {state.routes.map((route, index) => {
               const { options } = descriptors[route.key];
               const isFocused = state.index === index;
@@ -39,11 +34,11 @@ export default function TabLayout() {
               const getIconName = (routeName: string, focused: boolean) => {
                 switch (routeName) {
                   case "index":
-                    return focused ? "home" : "home-outline";
+                    return focused ? "home" : "home";
                   case "assets":
-                    return focused ? "stats-chart" : "stats-chart-outline";
+                    return focused ? "stats-chart" : "stats-chart";
                   default:
-                    return "ellipse";
+                    return focused ? "ellipse" : "ellipse-outline";
                 }
               };
 
@@ -64,30 +59,38 @@ export default function TabLayout() {
                 );
               }
 
+              const iconName = getIconName(route.name, isFocused) as any;
+
+              // Tab ATTIVA
+              if (isFocused) {
+                return (
+                  <Pressable
+                    key={route.key}
+                    onPress={onPress}
+                    className="flex-row h-14 items-center bg-accent rounded-full px-4  py-2.5 active:opacity-90"
+                  >
+                    <Ionicons name={iconName} size={20} color="#FFFFFF" />
+                    {options.title && (
+                      <Text className="ml-2 font-bold text-white">
+                        {options.title}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              }
+
+              // Tab INATTIVA: solo icona
               return (
                 <Pressable
                   key={route.key}
                   onPress={onPress}
-                  className="items-center justify-center py-1 px-3"
+                  className="w-14 bg-white rounded-full p-2 h-14 items-center justify-center active:opacity-60"
                 >
-                  <Ionicons
-                    name={getIconName(route.name, isFocused) as any}
-                    size={22}
-                    color={isFocused ? COLORS.accent : COLORS.muted}
-                  />
-                  {options.title && (
-                    <Text
-                      className={`text-[10px] mt-1 font-medium ${
-                        isFocused ? "text-accent" : "text-muted"
-                      }`}
-                    >
-                      {options.title}
-                    </Text>
-                  )}
+                  <Ionicons name={iconName} size={22} color="#000000" />
                 </Pressable>
               );
             })}
-          </BlurView>
+          </View>
         </View>
       )}
     >

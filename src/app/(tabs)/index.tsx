@@ -1,5 +1,6 @@
 import EquityChart from "@/src/components/EquityChart";
 import PortfolioCard from "@/src/components/PortfolioCard";
+import WeightsBreakdown from "@/src/components/WeightsBreakdown";
 import { usePortfolio } from "@/src/context/PortfolioContext";
 import { COLORS } from "@/src/theme";
 import {
@@ -251,10 +252,11 @@ export default function HomeScreen() {
             </View>
           )}
 
+          {/* Pesi attuali + pesi per ogni metodo */}
+          <WeightsBreakdown />
+
           {/* Confronto strategie (backtest) */}
-          <Text className="text-content font-semibold mt-6 mb-2">
-            Confronto strategie
-          </Text>
+
           <EquityChart />
         </ScrollView>
 

@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install yfinance
+      - run: pip install yfinance pandas lxml
 
       - name: Scarica i prezzi
         run: python ml/download_sample.py # deve scrivere data/prices.json

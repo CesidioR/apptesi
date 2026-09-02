@@ -1,4 +1,4 @@
-import { db } from "@/db/client";
+import { db, expoDb } from "@/db/client";
 import { prices } from "@/db/schema";
 import { runSeed } from "@/db/seed";
 import { COLORS } from "@/src/theme";
@@ -10,6 +10,7 @@ import { ActivityIndicator, Text, View } from "react-native";
 import migrations from "../../drizzle/migrations";
 import { PortfolioProvider } from "../context/PortfolioContext";
 import "../styles/global.css";
+import { syncPrices } from "../utils/sync";
 
 export default function RootLayout() {
   const { success, error } = useMigrations(db, migrations);
@@ -32,12 +33,12 @@ export default function RootLayout() {
         await runSeed(); // seed iniziale (bundled) solo se la tabella è vuota
       }
       // TEMPORANEO: forza la ri-sincronizzazione oggi (togli dopo)
-      /* await expoDb.runAsync("DELETE FROM meta WHERE key = 'lastSync'");
+      await expoDb.runAsync("DELETE FROM meta WHERE key = 'lastSync'");
       try {
         await syncPrices(); // dati freschi da GitHub (offline -> salta, usa quelli locali)
       } catch (e) {
         console.warn("Sync saltata (offline?):", e);
-      } */
+      }
       setSeeded(true);
     })();
   }, [success]);
@@ -57,9 +58,7 @@ export default function RootLayout() {
     return (
       <View className="flex-1 justify-center items-center bg-background">
         <ActivityIndicator size="large" color={COLORS.up} />
-        <Text className="text-muted mt-2">
-          Inizializzazione database...
-        </Text>
+        <Text className="text-muted mt-2">Inizializzazione database...</Text>
       </View>
     );
   }

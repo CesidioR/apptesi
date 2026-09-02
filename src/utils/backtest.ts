@@ -45,6 +45,8 @@ export type BacktestMetrics = {
 export type BacktestResult = {
   dates: string[];
   equity: number[];
+  weights: number[][]; // [passo][asset]: composizione del portafoglio nel tempo
+  tickers: string[]; // ordine degli asset (colonne di `weights`)
   metrics: BacktestMetrics;
 };
 
@@ -71,7 +73,7 @@ export async function backtest(
   } = opts;
 
   // Allineamento UNICO (candele con VIX) per tutte le strategie -> confronto equo.
-  const { candlesByAsset, dates } = alignCandles(rows, marketRows);
+  const { candlesByAsset, dates, tickers } = alignCandles(rows, marketRows);
   const n = candlesByAsset.length;
   const closesByAsset = candlesByAsset.map((c) => c.map((x) => x.close));
   const returnsByAsset = closesByAsset.map(computeReturns);
@@ -81,6 +83,7 @@ export async function backtest(
   const cost = commissionBps / 10000;
   const equity: number[] = [];
   const dateCurve: string[] = [];
+  const weightsCurve: number[][] = []; // pesi ad ogni passo (allineati a equity/date)
 
   let cash = initialCash;
   let weights = new Array<number>(n).fill(0); // frazioni investite (resto = cash)
@@ -90,6 +93,7 @@ export async function backtest(
 
   equity.push(cash);
   dateCurve.push(dates[window] ?? "");
+  weightsCurve.push(weights.slice());
 
   for (let r = window; r < T; r++) {
     // --- ribilanciamento: la strategia vede SOLO il passato (fino a price-index r) ---
@@ -146,9 +150,16 @@ export async function backtest(
 
     equity.push(cash);
     dateCurve.push(dates[r + 1] ?? "");
+    weightsCurve.push(weights.slice());
   }
 
-  return { dates: dateCurve, equity, metrics: computeMetrics(equity) };
+  return {
+    dates: dateCurve,
+    equity,
+    weights: weightsCurve,
+    tickers,
+    metrics: computeMetrics(equity),
+  };
 }
 
 function computeMetrics(equity: number[]): BacktestMetrics {
