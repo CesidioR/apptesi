@@ -26,6 +26,6 @@ jobs:
         run: |
           git config user.name  "github-actions"
           git config user.email "actions@github.com"
-          git add data/prices.json
+          git add data/prices.json data/prices.json.gz
           git commit -m "update prices $(date -u +%F)" || echo "nessuna modifica"
           git push

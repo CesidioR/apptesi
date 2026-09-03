@@ -7,9 +7,10 @@
 import { db, expoDb } from "@/db/client";
 import { market, prices } from "@/db/schema";
 import { lt } from "drizzle-orm";
+import { gunzipSync, strFromU8 } from "fflate";
 
 const URL =
-  "https://raw.githubusercontent.com/CesidioR/apptesi/main/data/prices.json";
+  "https://raw.githubusercontent.com/CesidioR/apptesi/main/data/prices.json.gz";
 
 function chunk<T>(a: T[], n: number): T[][] {
   const out: T[][] = [];
@@ -31,10 +32,12 @@ export async function syncPrices() {
     return;
   }
 
-  // --- scarica ---
+  // --- scarica (gzip) e decomprime ---
   const res = await fetch(URL, { cache: "no-store" });
   if (!res.ok) throw new Error(`sync HTTP ${res.status}`);
-  const data = (await res.json()) as {
+  const buf = new Uint8Array(await res.arrayBuffer()); // bytes compressi (~5-6 MB)
+  const json = strFromU8(gunzipSync(buf)); // decomprime -> stringa JSON
+  const data = JSON.parse(json) as {
     prices: (typeof prices.$inferInsert)[];
     market: (typeof market.$inferInsert)[];
   };

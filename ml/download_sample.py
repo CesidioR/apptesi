@@ -13,8 +13,10 @@ Output: data/prices.json
       "market": [{ "date","vix" }, ...] }
 """
 
+import gzip
 import json
 import os
+import shutil
 import pandas as pd
 import yfinance as yf
 
@@ -80,8 +82,13 @@ def main():
     with open(OUT_PATH, "w") as f:
         json.dump({"prices": prices, "market": market}, f)
 
+    # versione compressa: e' quella che scarica l'app (~5-6x piu' piccola)
+    with open(OUT_PATH, "rb") as f_in, gzip.open(OUT_PATH + ".gz", "wb") as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
     size_mb = os.path.getsize(OUT_PATH) / (1024 * 1024)
-    print(f"\nOK -> {OUT_PATH}  ({size_mb:.1f} MB)")
+    gz_mb = os.path.getsize(OUT_PATH + ".gz") / (1024 * 1024)
+    print(f"\nOK -> {OUT_PATH}  ({size_mb:.1f} MB)  |  {OUT_PATH}.gz  ({gz_mb:.1f} MB)")
     print(f"  titoli ok: {ok} | falliti: {len(failed)}")
     if failed:
         print(f"  falliti: {', '.join(failed)}")
