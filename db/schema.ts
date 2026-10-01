@@ -1,13 +1,13 @@
 import {
-    integer,
-    primaryKey,
-    real,
-    sqliteTable,
-    text,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
 } from "drizzle-orm/sqlite-core";
 
 // Prezzi OHLC per asset (una riga = un titolo in una data).
-// PK composta (ticker, date): senza ticker potresti salvare un solo asset.
+// PK composta (ticker, date)
 export const prices = sqliteTable(
   "prices",
   {
@@ -34,10 +34,13 @@ export const portfolios = sqliteTable("portfolios", {
   base_fees: real("base_fees").notNull().default(0),
   cash: real("cash").notNull().default(0), // capitale iniziale simulazione
   fees_paid: real("fees_paid").notNull().default(0), // commissioni pagate finora
+  base_value: real("base_value").notNull().default(0), // capitale-base dopo l'ultimo ribilanciamento
+  target_model: integer("target_model").notNull().default(25), // target vol DRL (15/20/25)
+  target_method: real("target_method").notNull().default(0.1), // target vol annuo del metodo
 });
 
 // Composizione: molti holdings per portafoglio.
-// PK composta (portfolio_id, ticker): senza, avresti un solo titolo per portafoglio.
+// PK composta (portfolio_id, ticker)
 export const holdings = sqliteTable(
   "holdings",
   {

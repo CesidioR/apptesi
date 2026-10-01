@@ -4,7 +4,6 @@ import type { PriceRow } from "@/src/utils/finance";
 import { logos } from "@/src/utils/logos";
 import {
   addAsset,
-  loadHoldings,
   loadPortfolios,
   loadSelectedPrices,
   type PortfolioRow,
@@ -54,13 +53,21 @@ const PERIOD_DAYS: Record<Period, number> = {
   "1Y": 365,
   MAX: Infinity,
 };
-const MAX_CANDLES = 60; // massimo di candele disegnate (oltre, si aggregano)
+// Tetti diversi per i due grafici:
+//  - candele: poche, perché ognuna ha bisogno di larghezza (oltre diventa illeggibile)
+//  - linea: fitta, può mostrare praticamente ogni giorno senza aggregare
+const MAX_CANDLES = 60; // candele: aggrega oltre questo numero
+const MAX_LINE = 1000; // linea: di fatto un punto al giorno
 
 type ChartType = "candle" | "line"; // candele o grafico a linea
 
-// Filtra le righe nel periodo scelto e le aggrega in ≤ MAX_CANDLES candele OHLC.
-// Per i periodi lunghi (es. 1 anno) accorpa più giorni in un'unica candela.
-function buildCandles(rows: PriceRow[], period: Period): Candle[] {
+// Filtra le righe nel periodo scelto e le aggrega in ≤ maxPoints punti OHLC.
+// Per i periodi lunghi accorpa più giorni in un unico punto (bucket).
+function buildCandles(
+  rows: PriceRow[],
+  period: Period,
+  maxPoints: number,
+): Candle[] {
   if (rows.length === 0) return [];
   const days = PERIOD_DAYS[period];
 
@@ -73,8 +80,8 @@ function buildCandles(rows: PriceRow[], period: Period): Candle[] {
   }
   if (filtered.length < 2) filtered = rows.slice(-2);
 
-  // se ci sono troppe candele, le accorpo in bucket (es. candele settimanali)
-  const bucketSize = Math.ceil(filtered.length / MAX_CANDLES);
+  // se ci sono troppi punti, li accorpo in bucket (es. candele settimanali)
+  const bucketSize = Math.max(1, Math.ceil(filtered.length / maxPoints));
   if (bucketSize <= 1) {
     return filtered.map((r, i) => ({
       date: r.date,
@@ -240,9 +247,17 @@ export default function AssetDetailScreen() {
   // periodo + tipo di grafico selezionati
   const [period, setPeriod] = useState<Period>("1M");
   const [chartType, setChartType] = useState<ChartType>("line");
+  // linea = fitta (ogni giorno), candele = aggregate se troppe
   const candles = useMemo(
-    () => (rows ? buildCandles(rows, period) : []),
-    [rows, period],
+    () =>
+      rows
+        ? buildCandles(
+            rows,
+            period,
+            chartType === "line" ? MAX_LINE : MAX_CANDLES,
+          )
+        : [],
+    [rows, period, chartType],
   );
   // variazione % sul periodo mostrato (primo open → ultimo close)
   const periodChange = useMemo(() => {
@@ -345,19 +360,6 @@ export default function AssetDetailScreen() {
               </View>
             </View>
 
-            {/* Pulsanti Compra / Vendi */}
-            {/* <View className="flex-row gap-3 mb-4">
-              <Pressable
-                onPress={openBuy}
-                className="flex-1 bg-violet-600 rounded-full py-4 items-center active:opacity-80"
-              >
-                <Text className="text-background font-semibold">Compra ↙</Text>
-              </Pressable>
-              <Pressable className="flex-1 border border-slate-300 rounded-full py-4 items-center active:opacity-60">
-                <Text className="text-content font-semibold">Vendi ↗</Text>
-              </Pressable>
-            </View> */}
-
             <Pressable
               onPress={openAdd}
               className="flex-1 h-10 rounded-xl mb-4 bg-accent justify-center items-center active:opacity-80"
@@ -366,62 +368,6 @@ export default function AssetDetailScreen() {
                 Aggiungi al portafoglio
               </Text>
             </Pressable>
-
-            {/* Importo da investire (scelto dall'utente) */}
-            {/* <View className="border border-divider rounded-2xl px-4 py-3 mb-4">
-              <View className="flex-row justify-between items-center mb-1">
-                <Text className="text-muted text-xs">
-                  Quanto vuoi investire
-                </Text>
-                <Text className="text-muted text-xs">
-                  Prezzo: ${last.toFixed(2)}
-                </Text>
-              </View>
-              <View className="flex-row items-center">
-                <Text className="text-2xl font-bold text-content mr-1">
-                  $
-                </Text>
-                <TextInput
-                  value={amount}
-                  onChangeText={(t) => setAmount(t.replace(",", "."))}
-                  placeholder="0"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="decimal-pad"
-                  className="flex-1 text-2xl font-bold text-content"
-                />
-              </View>
-              <Text className="text-muted text-xs mt-1">
-                ≈ {shares.toFixed(4)} azioni
-              </Text>
-              {/* importi rapidi 
-              <View className="flex-row gap-2 mt-3">
-                {[100, 500, 1000].map((v) => (
-                  <Pressable
-                    key={v}
-                    onPress={() => setAmount(String(v))}
-                    className="px-3 py-1.5 rounded-full bg-surface active:opacity-70"
-                  >
-                    <Text className="text-slate-700 text-xs font-semibold">
-                      ${v}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View> 
-            </View> */}
-
-            {/*  Informazioni 
-            <View className="border border-divider rounded-2xl px-4 py-3 mb-4">
-              <Text className="text-muted mb-1">Informazioni</Text>
-              <InfoRow
-                label="Prezzo di carico"
-                value={`$${entry.toFixed(2)}`}
-              />
-              <InfoRow label="Azioni stimate" value={`≈ ${shares.toFixed(4)}`} />
-              <InfoRow
-                label="Totale ordine"
-                value={`$${amountNum.toFixed(2)}`}
-              />
-            </View> */}
 
             {/* Grafico a candele con selettore di periodo */}
             <View className="border border-divider rounded-2xl p-4">
@@ -522,7 +468,7 @@ export default function AssetDetailScreen() {
                 Scegli il portafoglio
               </Text>
               <Text className="text-muted text-xs mb-4">
-                Aggiungi {ticker} — i pesi si impostano poi con un metodo
+                Aggiungi {ticker}, i pesi si impostano poi scegliendo un metodo
               </Text>
 
               {portfolios.length === 0 ? (

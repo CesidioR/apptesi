@@ -1,5 +1,8 @@
+import Dropdown from "@/src/components/Dropdown";
 import EquityChart from "@/src/components/EquityChart";
+import HoldingsList from "@/src/components/HoldingsList";
 import PortfolioCard from "@/src/components/PortfolioCard";
+import TargetSelector from "@/src/components/TargetSelector";
 import WeightsBreakdown from "@/src/components/WeightsBreakdown";
 import { usePortfolio } from "@/src/context/PortfolioContext";
 import { COLORS } from "@/src/theme";
@@ -34,6 +37,7 @@ export default function HomeScreen() {
     usePortfolio();
   const [list, setList] = useState<PortfolioRow[] | null>(null);
   const [applying, setApplying] = useState<WeightMethod | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<WeightMethod>("equal");
 
   // campi del form di creazione
   const [name, setName] = useState("");
@@ -177,7 +181,13 @@ export default function HomeScreen() {
               Nessun portafoglio. Creane uno con il pulsante +
             </Text>
           ) : (
-            <View className="flex-row flex-wrap gap-2 mb-4">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+              className="mb-4 -mx-4"
+            >
               {list.map((p) => {
                 const sel = p.id === selectedPortfolioId;
                 return (
@@ -200,7 +210,7 @@ export default function HomeScreen() {
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           )}
 
           {/* Carta del portafoglio selezionato */}
@@ -211,44 +221,49 @@ export default function HomeScreen() {
             }}
           />
 
+          {/* Titoli nel portafoglio (con rimozione) */}
+          <HoldingsList />
+
           {/* Metodo di allocazione dei pesi */}
           {selectedPortfolioId != null && (
             <View className="mt-4">
               <Text className="text-content font-semibold mb-2">
                 Metodo di allocazione
               </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {(
-                  [
-                    "equal",
-                    "inverseVol",
-                    "targetVol",
-                    "kelly",
-                    "agent",
-                  ] as WeightMethod[]
-                ).map((m) => {
-                  const busy = applying === m;
-                  return (
-                    <Pressable
-                      key={m}
-                      disabled={applying != null}
-                      onPress={() => handleApplyMethod(m)}
-                      className="px-4 py-2 rounded-full border border-divider bg-surface active:opacity-70"
-                    >
-                      {busy ? (
-                        <ActivityIndicator color={COLORS.accent} />
-                      ) : (
-                        <Text className="text-content text-xs font-semibold">
-                          {WEIGHT_METHOD_LABEL[m]}
-                        </Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
+              <View className="flex-row gap-3 items-end">
+                <View className="flex-1">
+                  <Dropdown<WeightMethod>
+                    value={selectedMethod}
+                    options={(
+                      [
+                        "equal",
+                        "inverseVol",
+                        "volTarget",
+                        "kelly",
+                        "agent",
+                      ] as WeightMethod[]
+                    ).map((m) => ({ label: WEIGHT_METHOD_LABEL[m], value: m }))}
+                    onChange={setSelectedMethod}
+                  />
+                </View>
+                <Pressable
+                  disabled={applying != null}
+                  onPress={() => handleApplyMethod(selectedMethod)}
+                  className="px-5 h-[46px] rounded-xl bg-accent items-center justify-center active:opacity-80"
+                >
+                  {applying != null ? (
+                    <ActivityIndicator color={COLORS.background} />
+                  ) : (
+                    <Text className="text-content font-semibold">Applica</Text>
+                  )}
+                </Pressable>
               </View>
               <Text className="text-muted text-xs mt-2">
                 Calcola i pesi dei titoli del portafoglio e li applica.
               </Text>
+
+              {/* Target di volatilità per agente DRL e metodo Target Vol */}
+              <TargetSelector />
             </View>
           )}
 
@@ -306,7 +321,7 @@ export default function HomeScreen() {
                   <TextInput
                     value={commission}
                     onChangeText={setCommission}
-                    placeholder="Commissione (bps) — opzionale"
+                    placeholder="Commissione (bps)"
                     placeholderTextColor={COLORS.muted}
                     keyboardType="numeric"
                     className="bg-background border border-divider rounded-lg px-3 py-2 mb-4 text-content"
@@ -314,7 +329,7 @@ export default function HomeScreen() {
                   <TextInput
                     value={base}
                     onChangeText={setBase}
-                    placeholder="Costo base — opzionale"
+                    placeholder="Costo base"
                     placeholderTextColor={COLORS.muted}
                     keyboardType="numeric"
                     className="bg-background border border-divider rounded-lg px-3 py-2 mb-4 text-content"

@@ -29,6 +29,20 @@
       "when": 1787585450003,
       "tag": "0003_talented_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788780015789,
+      "tag": "0004_mighty_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790798233550,
+      "tag": "0005_adorable_silver_centurion",
+      "breakpoints": true
     }
   ]
 }

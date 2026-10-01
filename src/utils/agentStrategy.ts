@@ -36,8 +36,11 @@ export const agentStrategy: Strategy = async (ctx) => {
   );
 
   const wAll = await runAgent(inputs); // N+1 pesi (ultimo = cash)
-  const wReal = wAll.slice(0, nReal); // pesi sui titoli veri
-  const cash = wAll[nReal] ?? 0;
+  // Il modello decide SOLO la quota di cash; la parte investita è equipesata
+  // su tutti i titoli veri (il modello fa timing dell'esposizione, non stock-picking).
+  const cash = Math.max(0, Math.min(1, wAll[nReal] ?? 0));
+  const investedEach = (1 - cash) / nReal;
+  const wReal = new Array<number>(nReal).fill(investedEach);
 
   // --- LOG di debug (spento di default) ---
   if (DEBUG) {

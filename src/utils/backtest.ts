@@ -17,8 +17,9 @@ import {
   meanVector,
   type PriceRow,
   sampleStd,
-  targetVolatility,
+  volatilityTargeting,
 } from "./finance";
+import { getMethodTargetVol } from "./agentConfig";
 import { type PortfolioState } from "./onnxFeatures";
 
 // Contesto passato alla strategia a ogni ribilanciamento (solo dati PASSATI).
@@ -40,6 +41,7 @@ export type BacktestMetrics = {
   annVol: number;
   sharpe: number;
   maxDrawdown: number;
+  calmar: number; // rendimento annualizzato / max drawdown
 };
 
 export type BacktestResult = {
@@ -170,6 +172,7 @@ function computeMetrics(equity: number[]): BacktestMetrics {
       annVol: 0,
       sharpe: 0,
       maxDrawdown: 0,
+      calmar: 0,
     };
   }
   const daily: number[] = [];
@@ -191,7 +194,11 @@ function computeMetrics(equity: number[]): BacktestMetrics {
     const dd = (peak - e) / peak;
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
-  return { totalReturn, annReturn, annVol, sharpe, maxDrawdown };
+  // Calmar: rendimento annualizzato per unita' di perdita massima.
+  // maxDrawdown == 0 (nessun drawdown) -> evita divisione per zero.
+  const calmar = maxDrawdown > 0 ? annReturn / maxDrawdown : 0;
+
+  return { totalReturn, annReturn, annVol, sharpe, maxDrawdown, calmar };
 }
 
 // ---- Strategie classiche (usano solo ctx.returnsWindow) ----------------
@@ -204,11 +211,12 @@ export const strategies: Record<string, Strategy> = {
   inverseVol: (ctx) => inverseVolatility(ctx.returnsWindow),
   kelly: (ctx) =>
     kelly(meanVector(ctx.returnsWindow), covarianceMatrix(ctx.returnsWindow)),
-  targetVol: (ctx) => {
+  volTarget: (ctx) => {
     const n = ctx.returnsWindow.length;
-    return targetVolatility(
+    return volatilityTargeting(
       new Array<number>(n).fill(1 / n),
       covarianceMatrix(ctx.returnsWindow),
+      getMethodTargetVol(), // target scelto dall'utente
     );
   },
 };

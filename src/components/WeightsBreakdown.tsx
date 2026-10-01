@@ -15,7 +15,7 @@ type MethodPlan = { method: WeightMethod; items: WeightItem[] };
 const METHODS: WeightMethod[] = [
   "equal",
   "inverseVol",
-  "targetVol",
+  "volTarget",
   "kelly",
   "agent",
 ];
@@ -110,7 +110,9 @@ export default function WeightsBreakdown() {
   return (
     <View className="mt-6">
       {/* Allocazione attuale */}
-      <Text className="text-content font-semibold mb-2">Allocazione attuale</Text>
+      <Text className="text-content font-semibold mb-2">
+        Allocazione attuale
+      </Text>
       {!hasTickers ? (
         <Text className="text-muted text-xs">
           Nessun titolo nel portafoglio. Aggiungine dalla scheda Assets.

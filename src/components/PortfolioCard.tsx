@@ -1,6 +1,7 @@
 import {
   deletePortfolio,
   loadPortfolioValue,
+  restartPortfolio,
   type PortfolioValue,
 } from "@/src/utils/portfolioMethods";
 import { COLORS } from "@/src/theme";
@@ -67,7 +68,8 @@ export default function PortfolioCard({
 }: {
   onDeleted?: () => void; // chiamata dopo l'eliminazione, per far aggiornare il genitore
 }) {
-  const { selectedPortfolioId, refreshToken } = usePortfolio();
+  const { selectedPortfolioId, refreshToken, refreshPortfolio } =
+    usePortfolio();
   const [value, setValue] = useState<PortfolioValue | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -83,6 +85,26 @@ export default function PortfolioCard({
     value && value.initialCash > 0
       ? (value.generated / value.initialCash) * 100
       : 0;
+
+  function handleRestart() {
+    if (selectedPortfolioId == null) return;
+    Alert.alert(
+      "Riavvia portafoglio",
+      `Azzera pesi e valore di "${value?.name ?? "questo portafoglio"}" ` +
+        `riportandolo al capitale iniziale. I titoli restano selezionati.`,
+      [
+        { text: "Annulla", style: "cancel" },
+        {
+          text: "Riavvia",
+          style: "destructive",
+          onPress: async () => {
+            await restartPortfolio(selectedPortfolioId);
+            refreshPortfolio(); // ricarica la carta col valore azzerato
+          },
+        },
+      ],
+    );
+  }
 
   function handleDelete() {
     if (selectedPortfolioId == null) return;
@@ -163,10 +185,23 @@ export default function PortfolioCard({
         </View>
       </LinearGradient>
 
-      {/* Elimina (discreto, sotto la carta) */}
+      {/* Azioni (discrete, sotto la carta): Riavvia a sinistra, Elimina a destra */}
       {selectedPortfolioId != null && (
-        <View className="flex-row justify-end mt-2">
-          <Pressable onPress={handleDelete} hitSlop={8} className="active:opacity-60">
+        <View className="flex-row justify-between mt-2">
+          <Pressable
+            onPress={handleRestart}
+            hitSlop={8}
+            className="active:opacity-60"
+          >
+            <Text className="text-muted text-xs font-semibold">
+              Riavvia portafoglio
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={handleDelete}
+            hitSlop={8}
+            className="active:opacity-60"
+          >
             <Text className="text-down text-xs font-semibold">
               Elimina portafoglio
             </Text>

@@ -5,6 +5,7 @@ import {
   alignCandles,
   alignCloses,
   basketReturns,
+  type CandleData,
   computeMarketVol,
   computeReturns,
   covarianceMatrix,
@@ -14,8 +15,14 @@ import {
   marketVolFromPrices,
   meanVector,
   PriceRow,
-  targetVolatility,
+  volatilityTargeting,
 } from "./finance";
+import {
+  type AgentTarget,
+  getMethodTargetVol,
+  setMethodTargetVol,
+  setModelTarget,
+} from "./agentConfig";
 import { buildModelInputs, ModelInputs } from "./onnxFeatures";
 import { runAgent } from "./onnxModel";
 
@@ -82,9 +89,9 @@ export async function loadTicker(days = 90): Promise<AssetCardData[]> {
     })
     .from(prices)
     .where(gte(prices.date, cutoff))
-    .orderBy(desc(prices.date));
+    .orderBy(prices.date); // crescente: dal piu' vecchio al piu' recente
 
-  // Raggruppa per ticker, array diu close in ordine di data
+  // Raggruppa per ticker, array di close in ordine di data (vecchio -> recente)
   const byTicker = new Map<string, number[]>();
   for (const r of rows) {
     if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, []);
@@ -123,14 +130,14 @@ export async function loadHoldings(
 export type WeightMethod =
   | "equal"
   | "inverseVol"
-  | "targetVol"
+  | "volTarget"
   | "kelly"
   | "agent";
 
 export const WEIGHT_METHOD_LABEL: Record<WeightMethod, string> = {
   equal: "Equipesato",
   inverseVol: "Inverse Vol",
-  targetVol: "Target Vol",
+  volTarget: "Target Vol",
   kelly: "Kelly",
   agent: "Modello (DRL)",
 };
@@ -148,13 +155,17 @@ async function computeWeights(
     const w = 1 / tickers.length;
     tickers.forEach((t) => weightsByTicker.set(t, w));
   } else if (method === "agent") {
-    // Pesi dal modello ONNX (DRL): inferenza one-shot sui dati correnti.
+    // DRL: il modello decide SOLO la quota di cash (timing dell'esposizione);
+    // la parte investita è ripartita EQUIPESATA su tutti i titoli.
     const rows = await loadSelectedPrices(tickers);
     const marketRows = await loadMarket();
     const { tickers: aligned } = alignCandles(rows, marketRows);
-    const inputs = computeFeature(rows, marketRows);
-    const w = await runAgent(inputs); // pesi allineati all'ordine di alignCandles
-    aligned.forEach((t, i) => weightsByTicker.set(t, Math.max(0, w[i] ?? 0)));
+    const inputs = computeFeature(rows, marketRows); // include l'asset cash
+    const wAll = await runAgent(inputs); // N+1 pesi (ultimo = cash)
+    const nReal = aligned.length;
+    const cash = Math.max(0, Math.min(1, wAll[nReal] ?? 0));
+    const investedEach = (1 - cash) / nReal; // equipesato sulla parte investita
+    aligned.forEach((t) => weightsByTicker.set(t, investedEach));
   } else {
     const rows = await loadSelectedPrices(tickers);
     const res = computeAllMethods(rows);
@@ -166,8 +177,8 @@ async function computeWeights(
     const arr =
       method === "inverseVol"
         ? res.inverseVol
-        : method === "targetVol"
-          ? res.targetVol
+        : method === "volTarget"
+          ? res.volTarget
           : res.kelly;
     res.tickers.forEach((t, i) => weightsByTicker.set(t, arr[i]));
   }
@@ -192,10 +203,17 @@ export async function computeMethodPlan(
       cash: portfolios.cash,
       commission_bps: portfolios.commission_bps,
       base_fees: portfolios.base_fees,
+      target_model: portfolios.target_model,
+      target_method: portfolios.target_method,
     })
     .from(portfolios)
     .where(eq(portfolios.id, portfolioId));
   if (!pf) throw new Error("Portafoglio non trovato");
+
+  // Applica i target del portafoglio prima di calcolare i pesi:
+  // runAgent e volatilityTargeting leggono questi valori dal config module.
+  setModelTarget(pf.target_model as AgentTarget);
+  setMethodTargetVol(pf.target_method);
 
   const oldW = new Map(
     (await loadHoldings(portfolioId)).map((h) => [h.ticker, h.weight]),
@@ -221,10 +239,36 @@ export async function commitAllocation(
   portfolioId: number,
   plan: AllocationPlan,
 ): Promise<void> {
+  const [pf] = await db
+    .select({ cash: portfolios.cash, base_value: portfolios.base_value })
+    .from(portfolios)
+    .where(eq(portfolios.id, portfolioId));
+  if (!pf) return;
+  const base = pf.base_value > 0 ? pf.base_value : pf.cash;
+
+  // holdings attuali (pesi + prezzo di carico correnti) e ultimi prezzi
+  const hold = await db
+    .select({
+      ticker: holdings.ticker,
+      weight: holdings.weight,
+      entry_price: holdings.entry_price,
+    })
+    .from(holdings)
+    .where(eq(holdings.portfolio_id, portfolioId));
+  const rows = await loadSelectedPrices(hold.map((h) => h.ticker));
+  const lastClose = new Map<string, number>();
+  for (const r of rows) lastClose.set(r.ticker, r.close);
+
+  // valore attuale (mark-to-market) PRIMA del ribilanciamento:
+  // qui vengono REALIZZATE le plus/minusvalenze anche dei titoli che riduci/vendi.
+  const valueNow = base * portfolioFactor(hold, lastClose);
+  const newBase = valueNow - plan.cost; // meno il costo di scambio
+
+  // nuovi pesi + prezzo di carico = prezzo di oggi (baseline azzerata alla conferma)
   for (const it of plan.items) {
     await db
       .update(holdings)
-      .set({ weight: it.weight })
+      .set({ weight: it.weight, entry_price: lastClose.get(it.ticker) ?? 0 })
       .where(
         and(
           eq(holdings.portfolio_id, portfolioId),
@@ -232,12 +276,14 @@ export async function commitAllocation(
         ),
       );
   }
-  if (plan.cost > 0) {
-    await db
-      .update(portfolios)
-      .set({ fees_paid: sql`${portfolios.fees_paid} + ${plan.cost}` })
-      .where(eq(portfolios.id, portfolioId));
-  }
+
+  await db
+    .update(portfolios)
+    .set({
+      base_value: newBase,
+      fees_paid: sql`${portfolios.fees_paid} + ${plan.cost}`,
+    })
+    .where(eq(portfolios.id, portfolioId));
 }
 
 // Utilizzato in portafolios
@@ -247,7 +293,77 @@ export type PortfolioRow = {
   cash: number;
   commission_bps: number;
   base_fees: number;
+  target_model: number;
+  target_method: number;
 };
+
+// Legge i target di volatilita' salvati per un portafoglio.
+export async function loadPortfolioTargets(
+  portfolioId: number,
+): Promise<{ model: AgentTarget; method: number } | null> {
+  const [pf] = await db
+    .select({
+      target_model: portfolios.target_model,
+      target_method: portfolios.target_method,
+    })
+    .from(portfolios)
+    .where(eq(portfolios.id, portfolioId));
+  if (!pf) return null;
+  return { model: pf.target_model as AgentTarget, method: pf.target_method };
+}
+
+// Salva i target scelti dall'utente sul portafoglio (uno o entrambi).
+export async function setPortfolioTargets(
+  portfolioId: number,
+  t: { model?: AgentTarget; method?: number },
+): Promise<void> {
+  const patch: Partial<{ target_model: number; target_method: number }> = {};
+  if (t.model != null) patch.target_model = t.model;
+  if (t.method != null) patch.target_method = t.method;
+  if (Object.keys(patch).length === 0) return;
+  await db
+    .update(portfolios)
+    .set(patch)
+    .where(eq(portfolios.id, portfolioId));
+}
+
+// "Restart": riporta il portafoglio allo stato iniziale, MANTENENDO i titoli
+// selezionati. Il valore corrente torna a coincidere col capitale iniziale (cash).
+//  - pesi a 0            -> nessuna allocazione (gains = 0)
+//  - fees_paid a 0       -> nessuna commissione accumulata
+//  - entry_price a oggi  -> baseline P&L azzerata (la prossima allocazione parte da qui)
+// Per rimuovere anche i titoli usa deletePortfolio/deleteHolding.
+export async function restartPortfolio(portfolioId: number): Promise<void> {
+  const hold = await db
+    .select({ ticker: holdings.ticker })
+    .from(holdings)
+    .where(eq(holdings.portfolio_id, portfolioId));
+
+  if (hold.length > 0) {
+    // ultimo prezzo per ogni titolo (per riportare il prezzo di carico a oggi)
+    const rows = await loadSelectedPrices(hold.map((h) => h.ticker));
+    const lastClose = new Map<string, number>();
+    for (const r of rows) lastClose.set(r.ticker, r.close); // rows in ordine data: vince l'ultimo
+
+    for (const h of hold) {
+      await db
+        .update(holdings)
+        .set({ weight: 0, entry_price: lastClose.get(h.ticker) ?? 0 })
+        .where(
+          and(
+            eq(holdings.portfolio_id, portfolioId),
+            eq(holdings.ticker, h.ticker),
+          ),
+        );
+    }
+  }
+
+  // azzera commissioni e riporta il capitale-base al capitale iniziale
+  await db
+    .update(portfolios)
+    .set({ fees_paid: 0, base_value: sql`${portfolios.cash}` })
+    .where(eq(portfolios.id, portfolioId));
+}
 
 export async function deletePortfolio(portfolioId: number): Promise<void> {
   await db.delete(holdings).where(eq(holdings.portfolio_id, portfolioId));
@@ -276,6 +392,8 @@ export async function loadPortfolios(): Promise<PortfolioRow[]> {
       cash: portfolios.cash,
       commission_bps: portfolios.commission_bps,
       base_fees: portfolios.base_fees,
+      target_model: portfolios.target_model,
+      target_method: portfolios.target_method,
     })
     .from(portfolios)
     .orderBy(portfolios.id);
@@ -295,6 +413,7 @@ export async function addPortfolio(
       commission_bps: commission,
       cash,
       base_fees: base,
+      base_value: cash, // il capitale-base parte dal capitale iniziale
     })
     .returning({ id: portfolios.id });
   return row.id;
@@ -333,6 +452,24 @@ export type PortfolioValue = {
 // ogni titolo viene "comprato" con cash*weight al primo prezzo disponibile e
 // cresce secondo il rapporto ultimoPrezzo/primoPrezzo; il capitale non investito
 // (se i pesi non sommano a 1) resta come contante.
+// Fattore di valore rispetto al capitale-base:
+//   fattore = (frazione a contante) + Σ peso × (ultimoPrezzo / entry_price)
+// Il valore del portafoglio è base_value × fattore.
+function portfolioFactor(
+  hold: { ticker: string; weight: number; entry_price: number }[],
+  lastClose: Map<string, number>,
+): number {
+  let sumW = 0;
+  let invested = 0;
+  for (const h of hold) {
+    sumW += h.weight;
+    const last = lastClose.get(h.ticker);
+    const growth = h.entry_price > 0 && last ? last / h.entry_price : 1;
+    invested += h.weight * growth;
+  }
+  return 1 - sumW + invested;
+}
+
 export async function loadPortfolioValue(
   portfolioId: number | null,
 ): Promise<PortfolioValue | null> {
@@ -342,11 +479,13 @@ export async function loadPortfolioValue(
     .select({
       name: portfolios.name,
       cash: portfolios.cash,
-      fees_paid: portfolios.fees_paid,
+      base_value: portfolios.base_value,
     })
     .from(portfolios)
     .where(eq(portfolios.id, portfolioId));
   if (!pf) return null;
+
+  const base = pf.base_value > 0 ? pf.base_value : pf.cash; // fallback per portafogli vecchi
 
   const hold = await db
     .select({
@@ -357,13 +496,13 @@ export async function loadPortfolioValue(
     .from(holdings)
     .where(eq(holdings.portfolio_id, portfolioId));
 
-  // portafoglio senza titoli: vale solo il contante iniziale
+  // senza titoli il valore è il capitale-base (che riflette già commissioni/gain realizzati)
   if (hold.length === 0) {
     return {
       name: pf.name,
       initialCash: pf.cash,
-      currentValue: pf.cash,
-      generated: 0,
+      currentValue: base,
+      generated: base - pf.cash,
     };
   }
 
@@ -372,18 +511,8 @@ export async function loadPortfolioValue(
   const lastClose = new Map<string, number>();
   for (const r of rows) lastClose.set(r.ticker, r.close);
 
-  // Guadagno lordo dei titoli: importo (cash × peso) × (ultimoPrezzo/entry − 1).
-  let gains = 0;
-  for (const h of hold) {
-    const amount = pf.cash * h.weight;
-    const last = lastClose.get(h.ticker);
-    const growth = h.entry_price > 0 && last ? last / h.entry_price : 1;
-    gains += amount * (growth - 1);
-  }
-
-  // le commissioni sono quelle REALMENTE pagate nei ribilanciamenti (fees_paid)
-  const generated = gains - pf.fees_paid;
-  const currentValue = pf.cash + generated;
+  const currentValue = base * portfolioFactor(hold, lastClose);
+  const generated = currentValue - pf.cash; // P&L totale dall'inizio
 
   return {
     name: pf.name,
@@ -398,7 +527,7 @@ export type MethodsResult = {
   sigmaMkt: number;
   inverseVol: number[];
   kelly: number[];
-  targetVol: number[];
+  volTarget: number[];
 };
 
 export function computeAllMethods(rows: PriceRow[]): MethodsResult | null {
@@ -415,9 +544,9 @@ export function computeAllMethods(rows: PriceRow[]): MethodsResult | null {
   const kel = kelly(mu, cov);
   const n = tickers.length;
   const wEq = Array(n).fill(1 / n);
-  const targetVol = targetVolatility(wEq, cov);
+  const volTarget = volatilityTargeting(wEq, cov, getMethodTargetVol());
   const sigmaMkt = computeMarketVol(basketReturns(returnsFull), 21);
-  return { tickers, sigmaMkt, inverseVol, kelly: kel, targetVol };
+  return { tickers, sigmaMkt, inverseVol, kelly: kel, volTarget };
 }
 
 // Costruisce i 3 input del modello per una previsione "one-shot" (giorno corrente).
@@ -435,8 +564,21 @@ export function computeFeature(
 
   // ultimi 30 candle per asset (finestra del modello)
   const window = candlesByAsset.map((c) => c.slice(-30));
-  // se prevWeights non c'è si parte da un paniere equipesato
-  const prev = prevWeights ?? new Array<number>(n).fill(1 / n);
+
+  // Asset CASH sintetico (prezzo piatto -> rendimento 0), come nel backtest.
+  // Il modello è addestrato con cash tra gli asset: gli serve per de-levare.
+  const cashWindow: CandleData[] = window[0].map((c) => ({
+    high: 1,
+    low: 1,
+    close: 1,
+    vix: c.vix,
+  }));
+  const windowWithCash = [...window, cashWindow];
+
+  // pesi precedenti: reali + slot cash (residuo). Default: equipesato sui reali.
+  const prevReal = prevWeights ?? new Array<number>(n).fill(1 / n);
+  const prevCash = Math.max(0, 1 - prevReal.reduce((a, b) => a + b, 0));
+  const prevWithCash = [...prevReal, prevCash];
 
   // stato portafoglio neutro per una previsione one-shot (nessuna posizione pregressa)
   const pf = {
@@ -449,5 +591,5 @@ export function computeFeature(
   const marketVol = marketVolFromPrices(priceRows, 21);
   const vix = window[0][window[0].length - 1].vix; // VIX più recente (broadcast)
 
-  return buildModelInputs(window, prev, pf, marketVol, vix);
+  return buildModelInputs(windowWithCash, prevWithCash, pf, marketVol, vix);
 }

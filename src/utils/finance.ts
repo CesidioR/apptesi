@@ -281,7 +281,7 @@ export function kelly(
 
 // Target Volatility di PORTAFOGLIO: scala wBase per avvicinarsi al target,
 // senza superare il 100% (nessuna leva). σ_target di default 9.7% annuo.
-export function targetVolatility(
+export function volatilityTargeting(
   wBase: number[],
   cov: number[][],
   sigmaTargetAnnual = 0.097, // 2.8% mensile ~ 9.7% annuo

@@ -6,7 +6,7 @@
 //    lontani escono man mano che entrano quelli nuovi.
 import { db, expoDb } from "@/db/client";
 import { market, prices } from "@/db/schema";
-import { lt } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { gunzipSync, strFromU8 } from "fflate";
 
 const URL =
@@ -19,11 +19,17 @@ function chunk<T>(a: T[], n: number): T[][] {
 }
 
 export async function syncPrices() {
-  // --- throttle: max 1 volta al giorno ---
   await expoDb.execAsync(
     `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`,
   );
-  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+
+  // Data locale in formato YYYY-MM-DD per evitare disallineamenti UTC
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const today = `${year}-${month}-${day}`;
+
   const last = await expoDb.getFirstAsync<{ value: string }>(
     `SELECT value FROM meta WHERE key = 'lastSync'`,
   );
@@ -32,36 +38,80 @@ export async function syncPrices() {
     return;
   }
 
-  // --- scarica (gzip) e decomprime ---
+  // --- Download ---
   const res = await fetch(URL, { cache: "no-store" });
   if (!res.ok) throw new Error(`sync HTTP ${res.status}`);
-  const buf = new Uint8Array(await res.arrayBuffer()); // bytes compressi (~5-6 MB)
-  const json = strFromU8(gunzipSync(buf)); // decomprime -> stringa JSON
-  const data = JSON.parse(json) as {
+
+  // --- Decompressione e parsing gestiti per ridurre la memoria ---
+  const rawBuffer = await res.arrayBuffer();
+  let decompressed: Uint8Array | null = gunzipSync(new Uint8Array(rawBuffer));
+  let jsonString: string | null = strFromU8(decompressed);
+
+  // Rilascia i byte grezzi prima del parsing
+  decompressed = null;
+
+  const data = JSON.parse(jsonString) as {
     prices: (typeof prices.$inferInsert)[];
     market: (typeof market.$inferInsert)[];
   };
-  if (data.prices.length === 0) throw new Error("JSON prezzi vuoto");
 
-  // --- upsert (idempotente) ---
-  for (const b of chunk(data.market, 500))
-    await db.insert(market).values(b).onConflictDoNothing();
-  for (const b of chunk(data.prices, 500))
-    await db.insert(prices).values(b).onConflictDoNothing();
+  // Rilascia la stringa JSON per liberare memoria JS
+  jsonString = null;
 
-  // --- finestra mobile: elimina i giorni piu' vecchi del JSON ---
-  const minDate = data.prices.reduce(
-    (m, p) => (p.date < m ? p.date : m),
-    data.prices[0].date,
-  );
-  await db.delete(prices).where(lt(prices.date, minDate));
-  await db.delete(market).where(lt(market.date, minDate));
+  if (!data.prices || data.prices.length === 0) {
+    throw new Error("JSON prezzi vuoto o malformato");
+  }
 
-  // --- segna la sync di oggi ---
-  await expoDb.runAsync(
-    `INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', ?)`,
-    today,
-  );
+  // --- Calcolo minDate lineare rapido ---
+  let minDate = data.prices[0].date;
+  for (let i = 1; i < data.prices.length; i++) {
+    if (data.prices[i].date < minDate) {
+      minDate = data.prices[i].date;
+    }
+  }
+
+  // Scrittura Atomica
+  // Inserimenti, eliminazioni e aggiornamento meta avvengono insieme
+  await db.transaction(async (tx) => {
+    // Upsert market: sovrascrive il VIX se la data esiste gia'
+    for (const b of chunk(data.market, 500)) {
+      await tx
+        .insert(market)
+        .values(b)
+        .onConflictDoUpdate({
+          target: market.date,
+          set: { vix: sql`excluded.vix` },
+        });
+    }
+
+    // Upsert prezzi: sovrascrive high/low/close se (ticker,date) esiste gia'.
+    // Necessario perche' con auto_adjust=True yfinance ri-aggiusta l'intera
+    // serie storica a ogni dividendo/split: i prezzi passati vanno aggiornati.
+    for (const b of chunk(data.prices, 500)) {
+      await tx
+        .insert(prices)
+        .values(b)
+        .onConflictDoUpdate({
+          target: [prices.ticker, prices.date],
+          set: {
+            high: sql`excluded.high`,
+            low: sql`excluded.low`,
+            close: sql`excluded.close`,
+          },
+        });
+    }
+
+    // Finestra mobile: elimina storico antecedente
+    await tx.delete(prices).where(lt(prices.date, minDate));
+    if (data.market.length > 0) {
+      await tx.delete(market).where(lt(market.date, minDate));
+    }
+
+    // Segna sincronizzazione completata
+    await tx.run(
+      sql`INSERT OR REPLACE INTO meta (key, value) VALUES ('lastSync', ${today})`,
+    );
+  });
 
   console.log(
     `Sync OK: ${data.prices.length} prezzi (finestra da ${minDate}), ${data.market.length} market`,

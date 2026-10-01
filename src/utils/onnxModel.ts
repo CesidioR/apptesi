@@ -1,45 +1,59 @@
 // =====================================================================
-//  onnxModel.ts — caricamento e inferenza del modello dnamm.onnx
-//  Singleton di modulo: il modello si carica UNA volta e resta
-//  accessibile da qualunque parte (anche fuori da React).
+//  onnxModel.ts — caricamento e inferenza dei modelli DRL.
+//  Un modello ONNX per ciascun target di volatilita' (15/20/25%).
+//  Ogni sessione si carica UNA volta (lazy) e resta in cache.
 // =====================================================================
 
 import { Asset } from "expo-asset";
 import { InferenceSession, Tensor } from "onnxruntime-react-native";
+import { type AgentTarget, getModelTarget } from "./agentConfig";
 import { type ModelInputs, type TensorData } from "./onnxFeatures";
 
-let session: InferenceSession | null = null;
-let loadingPromise: Promise<InferenceSession> | null = null;
+// Un file per target. require() statico: Metro non fa require dinamici.
+const MODEL_MODULES: Record<AgentTarget, number> = {
+  15: require("../../assets/dnamm_tv15.onnx"),
+  20: require("../../assets/dnamm_tv20.onnx"),
+  25: require("../../assets/dnamm_tv25.onnx"),
+};
 
-// Carica il modello una sola volta (idempotente). Chiamalo all'avvio dell'app.
-export async function loadModel(): Promise<InferenceSession> {
-  if (session) return session;
-  if (loadingPromise) return loadingPromise; // evita caricamenti concorrenti
+const sessions: Partial<Record<AgentTarget, InferenceSession>> = {};
+const loading: Partial<Record<AgentTarget, Promise<InferenceSession>>> = {};
 
-  loadingPromise = (async () => {
-    const asset = Asset.fromModule(require("../../assets/dnamm.onnx"));
+// Carica (una sola volta per target) il modello richiesto. Chiamalo all'avvio
+// per pre-caricare il default; gli altri target si caricano alla prima inferenza.
+export async function loadModel(
+  target: AgentTarget = getModelTarget(),
+): Promise<InferenceSession> {
+  const cached = sessions[target];
+  if (cached) return cached;
+  const inflight = loading[target];
+  if (inflight) return inflight; // evita caricamenti concorrenti dello stesso modello
+
+  const p = (async () => {
+    const asset = Asset.fromModule(MODEL_MODULES[target]);
     await asset.downloadAsync(); // rende disponibile il file in locale
     if (!asset.localUri)
-      throw new Error("Asset ONNX non trovato (localUri null)");
-    session = await InferenceSession.create(asset.localUri);
-    return session;
+      throw new Error(`Asset ONNX non trovato (target ${target}, localUri null)`);
+    const created = await InferenceSession.create(asset.localUri);
+    sessions[target] = created;
+    return created;
   })();
 
-  return loadingPromise;
-}
-
-export function getSession(): InferenceSession | null {
-  return session;
+  loading[target] = p;
+  return p;
 }
 
 function toTensor(t: TensorData): Tensor {
   return new Tensor("float32", t.data, t.dims);
 }
 
-// Esegue l'agente: dai 3 input costruiti -> pesi del portafoglio (number[]).
-// Usato in agentStrategy,
-export async function runAgent(inputs: ModelInputs): Promise<number[]> {
-  const s = session ?? (await loadModel());
+// Esegue l'agente col modello del target corrente (o quello passato).
+// Usato in agentStrategy e nel ramo agent di computeWeights.
+export async function runAgent(
+  inputs: ModelInputs,
+  target: AgentTarget = getModelTarget(),
+): Promise<number[]> {
+  const s = sessions[target] ?? (await loadModel(target));
 
   const feeds: Record<string, Tensor> = {
     features: toTensor(inputs.features),

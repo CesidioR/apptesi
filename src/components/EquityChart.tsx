@@ -1,4 +1,9 @@
 import { COLORS } from "@/src/theme";
+import {
+  type AgentTarget,
+  setMethodTargetVol,
+  setModelTarget,
+} from "@/src/utils/agentConfig";
 import { agentStrategy } from "@/src/utils/agentStrategy";
 import {
   backtest,
@@ -44,10 +49,10 @@ const SERIES: {
     strategy: strategies.inverseVol,
   },
   {
-    key: "targetVol",
+    key: "volTarget",
     label: "Target Vol",
     color: "#38BDF8", // sky — tinta categorica distinta
-    strategy: strategies.targetVol,
+    strategy: strategies.volTarget,
   },
   {
     key: "kelly",
@@ -140,7 +145,7 @@ export default function EquityChart() {
     null,
   );
 
-  const { selectedPortfolioId } = usePortfolio();
+  const { selectedPortfolioId, refreshToken } = usePortfolio();
 
   const [opts, setOpts] = useState<OPTS>({
     window: 126,
@@ -164,7 +169,13 @@ export default function EquityChart() {
       const tks = await loadPortfolioTickers(selectedPortfolioId);
       const allRows = await loadSelectedPrices(tks);
       if (allRows.length === 0) {
+        // nessun titolo: azzera tutto così il backtest sparisce
         setData([]);
+        setAvailable([]);
+        setMetrics({});
+        setPeriod(null);
+        setWeightsByKey({});
+        setBtTickers([]);
         return;
       }
       // limita i dati alla durata scelta (anni + mesi); 0/0 = tutto lo storico
@@ -182,6 +193,14 @@ export default function EquityChart() {
       const pf = (await loadPortfolios()).find(
         (p) => p.id === selectedPortfolioId,
       );
+
+      // applica i target del portafoglio: l'agente e il metodo Target Vol
+      // nel backtest leggono questi valori (config module).
+      if (pf) {
+        setModelTarget(pf.target_model as AgentTarget);
+        setMethodTargetVol(pf.target_method);
+      }
+
       const backtestOpts = {
         window: opts.window,
         agentWindow: opts.agentWindow,
@@ -239,7 +258,7 @@ export default function EquityChart() {
       setMetrics(mets);
       setData(points);
     })();
-  }, [selectedPortfolioId, opts]);
+  }, [selectedPortfolioId, opts, refreshToken]);
 
   if (!data) {
     return (
@@ -327,9 +346,8 @@ export default function EquityChart() {
         )}
 
         {/* Evidenzia una strategia (l'equipesato resta sempre in evidenza) */}
-        <View className="flex-1 w-full items-center  ">
-          {/*  <Text className="text-white text-center px-2 mb-1">Evidenzia</Text> */}
-          <View className="flex-row  bg-accent w-full justify-between rounded-full p-2 mb-2">
+        <View className="w-full mb-2">
+          <View className="flex-row flex-wrap gap-2 justify-center bg-accent w-full rounded-2xl p-2">
             {shown
               .filter((s) => s.key !== "equalWeight")
               .map((s) => {
@@ -338,8 +356,8 @@ export default function EquityChart() {
                   <Pressable
                     key={s.key}
                     onPress={() => setHighlight(sel ? null : s.key)}
-                    className={`px-3 border-black py-0.5 rounded-full border-[3px] bg-white ${
-                      sel ? "bg-black border-white" : "border-divider"
+                    className={`px-3 py-1 rounded-full border-[3px] bg-white ${
+                      sel ? "bg-black border-white" : "border-black"
                     }`}
                   >
                     <Text
@@ -401,17 +419,20 @@ export default function EquityChart() {
       <View className="mt-4 px-4 bg-black rounded-xl p-2">
         <View className="flex-row border-b border-divider pb-1">
           <Text className="flex-1 text-muted font-bold text-xs">Strategia</Text>
-          <Text className="w-16 text-right text-muted font-bold text-xs">
+          <Text className="w-14 text-right text-muted font-bold text-xs">
             Rend
           </Text>
-          <Text className="w-14 text-right text-muted font-bold text-xs">
+          <Text className="w-12 text-right text-muted font-bold text-xs">
             Sharpe
           </Text>
-          <Text className="w-14 text-right text-muted font-bold text-xs">
+          <Text className="w-12 text-right text-muted font-bold text-xs">
             AnnVol
           </Text>
-          <Text className="w-16 text-right text-muted font-bold text-xs">
+          <Text className="w-14 text-right text-muted font-bold text-xs">
             MaxDD
+          </Text>
+          <Text className="w-12 text-right text-muted font-bold text-xs">
+            Calmar
           </Text>
         </View>
         {shown.map((s) => {
@@ -428,17 +449,20 @@ export default function EquityChart() {
                 />
                 <Text className="text-content text-xs">{s.label}</Text>
               </View>
-              <Text className="w-16 text-right text-content text-xs">
+              <Text className="w-14 text-right text-content text-xs">
                 {m ? pct(m.totalReturn) : "-"}
               </Text>
-              <Text className="w-14 text-right text-content text-xs">
+              <Text className="w-12 text-right text-content text-xs">
                 {m ? m.sharpe.toFixed(2) : "-"}
               </Text>
-              <Text className="w-14 text-right text-content text-xs">
+              <Text className="w-12 text-right text-content text-xs">
                 {m ? m.annVol.toFixed(2) : "-"}
               </Text>
-              <Text className="w-16 text-right text-content text-xs">
+              <Text className="w-14 text-right text-content text-xs">
                 {m ? "-" + (m.maxDrawdown * 100).toFixed(1) + "%" : "-"}
+              </Text>
+              <Text className="w-12 text-right text-content text-xs">
+                {m ? m.calmar.toFixed(2) : "-"}
               </Text>
             </View>
           );
