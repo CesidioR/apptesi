@@ -80,7 +80,6 @@ export default function Dropdown<T>({
                       active ? "text-accent font-semibold" : "text-content"
                     }`}
                   >
-                    {active ? "✓  " : ""}
                     {o.label}
                   </Text>
                 </Pressable>

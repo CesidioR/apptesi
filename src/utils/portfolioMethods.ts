@@ -137,7 +137,7 @@ export type WeightMethod =
 export const WEIGHT_METHOD_LABEL: Record<WeightMethod, string> = {
   equal: "Equipesato",
   inverseVol: "Inverse Vol",
-  volTarget: "Target Vol",
+  volTarget: "Volatility Targeting",
   kelly: "Kelly",
   agent: "Modello (DRL)",
 };
@@ -189,6 +189,7 @@ export type AllocationPlan = {
   method: WeightMethod;
   items: { ticker: string; weight: number }[]; // pesi target
   cost: number; // costo di ribilanciamento stimato
+  turnover: number; // variazione totale dei pesi (0 = allocazione invariata)
 };
 
 // Prepara (SENZA scrivere) il piano di allocazione: pesi target + costo di
@@ -231,7 +232,7 @@ export async function computeMethodPlan(
       : 0;
 
   const items = [...newW].map(([ticker, weight]) => ({ ticker, weight }));
-  return { method, items, cost };
+  return { method, items, cost, turnover };
 }
 
 // Applica DEFINITIVAMENTE un piano: salva i pesi e addebita il costo su fees_paid.

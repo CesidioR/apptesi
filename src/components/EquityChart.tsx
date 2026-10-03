@@ -1,8 +1,8 @@
 import { COLORS } from "@/src/theme";
 import {
-  type AgentTarget,
   setMethodTargetVol,
   setModelTarget,
+  type AgentTarget,
 } from "@/src/utils/agentConfig";
 import { agentStrategy } from "@/src/utils/agentStrategy";
 import {
@@ -50,7 +50,7 @@ const SERIES: {
   },
   {
     key: "volTarget",
-    label: "Target Vol",
+    label: "Vol Targeting",
     color: "#38BDF8", // sky — tinta categorica distinta
     strategy: strategies.volTarget,
   },
@@ -362,7 +362,7 @@ export default function EquityChart() {
                   >
                     <Text
                       className="text-xs font-semibold"
-                      style={{ color: sel ? "#FFFFFF" : COLORS.muted }}
+                      style={{ color: sel ? "#000000" : COLORS.muted }}
                     >
                       {s.label}
                     </Text>

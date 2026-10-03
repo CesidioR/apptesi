@@ -40,7 +40,7 @@ export default function TargetSelector() {
         </View>
         <View className="flex-1">
           <Dropdown<number>
-            label="Metodo Target Vol"
+            label="Volatility Targeting"
             value={methodTargetVol}
             options={METHOD_OPTIONS}
             onChange={setMethodTargetVol}
@@ -49,8 +49,8 @@ export default function TargetSelector() {
       </View>
 
       <Text className="text-muted text-xs mt-2">
-        Vale per l'agente e per il metodo Target Vol, sia nell'allocazione sia
-        nel backtest.
+        Vale per l'agente e per il metodo Volatility Targeting, sia
+        nell'allocazione sia nel backtest.
       </Text>
     </View>
   );

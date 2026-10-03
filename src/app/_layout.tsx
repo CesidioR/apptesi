@@ -11,6 +11,7 @@ import migrations from "../../drizzle/migrations";
 import { PortfolioProvider } from "../context/PortfolioContext";
 import "../styles/global.css";
 import { syncPrices } from "../utils/sync";
+import { seedTestPortfolios } from "../utils/devSeedPortfolios"; // TEMPORANEO
 
 export default function RootLayout() {
   const { success, error } = useMigrations(db, migrations);
@@ -36,6 +37,12 @@ export default function RootLayout() {
         await syncPrices(); // dati freschi da GitHub (offline -> salta, usa quelli locali)
       } catch (e) {
         console.warn("Sync saltata (offline?):", e);
+      }
+      // TEMPORANEO: portafogli di prova (idempotente). Rimuovere quando non serve.
+      try {
+        await seedTestPortfolios();
+      } catch (e) {
+        console.warn("Seed portafogli di test saltato:", e);
       }
       setSeeded(true);
     })();

@@ -4,7 +4,7 @@
 import { COLORS } from "@/src/theme";
 import { deleteHolding, loadHoldings } from "@/src/utils/portfolioMethods";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { usePortfolio } from "../context/PortfolioContext";
 
 type Holding = { ticker: string; weight: number };
@@ -50,7 +50,13 @@ export default function HoldingsList() {
       <Text className="text-content font-semibold mb-2">
         Titoli nel portafoglio ({holds.length})
       </Text>
-      <View className="flex-row flex-wrap gap-2">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+        className="-mx-4"
+      >
         {holds.map((h) => (
           <View
             key={h.ticker}
@@ -69,7 +75,7 @@ export default function HoldingsList() {
             </Pressable>
           </View>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }

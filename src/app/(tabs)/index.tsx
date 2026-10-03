@@ -123,11 +123,13 @@ export default function HomeScreen() {
     setApplying(method);
     try {
       const plan = await computeMethodPlan(pid, method);
-      Alert.alert(
-        `Applicare "${WEIGHT_METHOD_LABEL[method]}"?`,
-        plan.cost > 0
-          ? `Costo di ribilanciamento: $${plan.cost.toFixed(2)} (addebitato al portafoglio).`
-          : "Nessun costo: l'allocazione non cambia.",
+      const msg =
+        plan.turnover < 1e-6
+          ? "L'allocazione è già questa: non cambia nulla."
+          : plan.cost > 0
+            ? `Costo di ribilanciamento: $${plan.cost.toFixed(2)} (addebitato al portafoglio).`
+            : "Riallocazione senza costi (commissioni a zero).";
+      Alert.alert(`Applicare "${WEIGHT_METHOD_LABEL[method]}"?`, msg,
         [
           { text: "Annulla", style: "cancel" },
           {
